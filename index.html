@@ -460,6 +460,101 @@
     .wallet-status {
       font-size: 12px;
       color: var(--muted);
+      min-height: 16px;
+    }
+
+    .wallet-note {
+      font-size: 12px;
+      color: #ff7878;
+      line-height: 1.3;
+    }
+
+    .wallet-btn {
+      margin-top: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+      background: linear-gradient(120deg, var(--accent-2), #14a28f);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      box-shadow: 0 10px 20px rgba(20, 211, 194, 0.35);
+    }
+
+    .wallet-btn:hover {
+      transform: translateY(-2px);
+      opacity: 0.95;
+    }
+
+    .demo-indicator {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #fff;
+      background: #ff4d4f;
+      box-shadow: 0 6px 18px rgba(255, 77, 79, 0.35);
+      z-index: 120;
+      pointer-events: none;
+    }
+
+    .demo-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 13, 18, 0.95);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      z-index: 110;
+    }
+
+    .demo-overlay.is-hidden {
+      display: none;
+    }
+
+    .demo-overlay-card {
+      max-width: 420px;
+      width: 100%;
+      background: rgba(15, 17, 21, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+
+    .demo-overlay-card h3 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      letter-spacing: 1px;
+    }
+
+    .demo-overlay-card p {
+      margin: 8px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .demo-overlay-card .demo-overlay-btn {
+      margin-top: 16px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(32, 211, 194, 0.2);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .wallet-status {
+      font-size: 12px;
+      color: var(--muted);
       margin-top: 4px;
       min-height: 16px;
     }
@@ -568,6 +663,15 @@
   </style>
 </head>
 <body>
+  <div class="demo-indicator">DEMO</div>
+  <div class="demo-overlay" id="demoOverlay">
+    <div class="demo-overlay-card">
+      <h3>Trindr Demo</h3>
+      <p>Connecting your Solana wallet only queries your SOL balance so you can simulate trading.</p>
+      <p>This overlay stays until your wallet is linked. Every action thereafter runs on simulated demo credit.</p>
+      <button class="demo-overlay-btn" id="overlayConnectBtn" type="button">Connect Solana wallet</button>
+    </div>
+  </div>
   <main class="app">
     <div class="wrap">
       <header>
@@ -593,6 +697,7 @@
         <div class="wallet-label">Account Balance (SOL)</div>
         <div class="wallet-value" id="balance">— SOL</div>
         <div class="wallet-status" id="wallet-status">Wallet not connected</div>
+        <div class="wallet-note" id="wallet-note"></div>
         <button class="wallet-btn" id="connectWalletBtn" type="button">Connect Solana wallet</button>
       </div>
       <div class="wallet-card">
@@ -696,12 +801,17 @@
     const SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
     const WALLET_STORAGE_KEY = "trinder_wallet_address";
     const walletStatusEl = document.getElementById("wallet-status");
+    const walletNoteEl = document.getElementById("wallet-note");
     const connectWalletBtn = document.getElementById("connectWalletBtn");
+    const demoOverlay = document.getElementById("demoOverlay");
+    const overlayConnectBtn = document.getElementById("overlayConnectBtn");
     const walletState = {
       connected: false,
       address: null,
       provider: null,
       solBalance: 0,
+      hasDemoCredit: false,
+      simulatedBalance: 0,
     };
 
     const getWalletProvider = () => {
@@ -720,15 +830,28 @@
       })} SOL`;
     };
 
+    const updateDemoOverlay = () => {
+      if (!demoOverlay) return;
+      demoOverlay.classList.toggle("is-hidden", walletState.connected);
+    };
+
+    const updateWalletNote = () => {
+      if (!walletNoteEl) return;
+      walletNoteEl.textContent = walletState.hasDemoCredit
+        ? "Demo credit applied: you have 1 SOL for simulated trading."
+        : "";
+    };
+
     const updateWalletDisplay = () => {
       if (balanceEl) {
-        balanceEl.textContent = formatSolDisplay(balance);
+        balanceEl.textContent = formatBalance(balance);
       }
       if (!walletStatusEl) return;
       if (walletState.connected && walletState.address) {
-        const label = walletState.solBalance
-          ? formatSolDisplay(walletState.solBalance)
-          : "0 SOL";
+        const readableBalance = walletState.hasDemoCredit
+          ? walletState.simulatedBalance
+          : walletState.solBalance;
+        const label = formatBalance(readableBalance);
         walletStatusEl.textContent = `Connected ${shortAddress(walletState.address)} · ${label}`;
       } else {
         walletStatusEl.textContent = "Wallet not connected";
@@ -765,9 +888,13 @@
 
     const refreshWalletBalance = async (address) => {
       const solBalance = await fetchSolBalance(address);
-      walletState.solBalance = solBalance;
-      balance = solBalance;
+      const hasCredit = solBalance <= 0;
+      walletState.solBalance = hasCredit ? 0 : solBalance;
+      walletState.hasDemoCredit = hasCredit;
+      walletState.simulatedBalance = hasCredit ? 1 : 0;
+      balance = hasCredit ? walletState.simulatedBalance : walletState.solBalance;
       updateWalletDisplay();
+      updateWalletNote();
     };
 
     const connectWallet = async () => {
@@ -794,6 +921,7 @@
       walletState.address = publicKey;
       walletState.provider = provider;
       localStorage.setItem(WALLET_STORAGE_KEY, publicKey);
+      updateDemoOverlay();
       await refreshWalletBalance(publicKey);
     };
 
@@ -809,9 +937,13 @@
       walletState.address = null;
       walletState.provider = null;
       walletState.solBalance = 0;
+      walletState.hasDemoCredit = false;
+      walletState.simulatedBalance = 0;
       localStorage.removeItem(WALLET_STORAGE_KEY);
       balance = 0;
       updateWalletDisplay();
+      updateWalletNote();
+      updateDemoOverlay();
     };
 
     const initStoredWallet = async () => {
@@ -822,6 +954,7 @@
       }
       walletState.address = stored;
       walletState.connected = true;
+      updateDemoOverlay();
       await refreshWalletBalance(stored);
     };
 
@@ -1496,6 +1629,12 @@
         }
       });
     }
+    if (overlayConnectBtn) {
+      overlayConnectBtn.addEventListener("click", () => {
+        connectWallet();
+      });
+    }
+    updateDemoOverlay();
     initStoredWallet();
     loadFeed();
   </script>

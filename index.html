@@ -952,8 +952,22 @@
         updateWalletDisplay();
         return;
       }
+      const provider = getWalletProvider();
+      const isProviderConnected = Boolean(
+        provider &&
+          (provider.isConnected || provider.isPhantom || provider.isSolflare) &&
+          provider.publicKey &&
+          provider.publicKey.toString?.() === stored
+      );
+      if (!isProviderConnected) {
+        localStorage.removeItem(WALLET_STORAGE_KEY);
+        updateWalletDisplay();
+        updateDemoOverlay();
+        return;
+      }
       walletState.address = stored;
       walletState.connected = true;
+      walletState.provider = provider;
       updateDemoOverlay();
       await refreshWalletBalance(stored);
     };

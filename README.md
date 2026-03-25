@@ -37,5 +37,5 @@ Once Adrena provides API access, we would:
 
 ## Notes
 
-- This version is intentionally frontend-focused because we lacked the backend credentials; the real competition build would add the backend layer to keep Adrena keys private and enable secured leaderboard submissions.
+- This version is intentionally frontend-focused because we lacked the backend credentials; once Adrena access arrives the production-grade competition experience would add that backend layer to keep keys private, secure leaderboard submissions, and publish authenticated events.
 - Tests: manual browser checks only (wallet connection, swipe interactions, animated FX).

@@ -504,54 +504,6 @@
       pointer-events: none;
     }
 
-    .demo-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(9, 13, 18, 0.95);
-      display: grid;
-      place-items: center;
-      padding: 20px;
-      z-index: 110;
-    }
-
-    .demo-overlay.is-hidden {
-      display: none;
-    }
-
-    .demo-overlay-card {
-      max-width: 420px;
-      width: 100%;
-      background: rgba(15, 17, 21, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 18px;
-      padding: 24px;
-      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
-      text-align: center;
-    }
-
-    .demo-overlay-card h3 {
-      margin: 0 0 12px;
-      font-size: 24px;
-      letter-spacing: 1px;
-    }
-
-    .demo-overlay-card p {
-      margin: 8px 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .demo-overlay-card .demo-overlay-btn {
-      margin-top: 16px;
-      padding: 10px 16px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(32, 211, 194, 0.2);
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
     .wallet-status {
       font-size: 12px;
       color: var(--muted);
@@ -664,14 +616,6 @@
 </head>
 <body>
   <div class="demo-indicator">DEMO</div>
-  <div class="demo-overlay" id="demoOverlay">
-    <div class="demo-overlay-card">
-      <h3>Trindr Demo</h3>
-      <p>Connecting your Solana wallet only queries your SOL balance so you can simulate trading.</p>
-      <p>This overlay stays until your wallet is linked. Every action thereafter runs on simulated demo credit.</p>
-      <button class="demo-overlay-btn" id="overlayConnectBtn" type="button">Connect Solana wallet</button>
-    </div>
-  </div>
   <main class="app">
     <div class="wrap">
       <header>
@@ -798,13 +742,78 @@
       return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
     };
 
+    const escapeHtml = (value) =>
+      String(value ?? "").replace(/[&<>"']/g, (char) => {
+        switch (char) {
+          case "&":
+            return "&amp;";
+          case "<":
+            return "&lt;";
+          case ">":
+            return "&gt;";
+          case '"':
+            return "&quot;";
+          case "'":
+            return "&#39;";
+          default:
+            return char;
+        }
+      });
+
+    const getTrustedXLink = (link) => {
+      const rawUrl = link?.url;
+      if (!rawUrl) return null;
+      try {
+        const url = new URL(rawUrl);
+        const host = url.hostname.toLowerCase();
+        const isTrustedHost =
+          url.protocol === "https:" &&
+          (host === "x.com" ||
+            host === "www.x.com" ||
+            host === "twitter.com" ||
+            host === "www.twitter.com" ||
+            host === "mobile.twitter.com");
+        if (!isTrustedHost) return null;
+        return {
+          label: "X",
+          url: url.toString(),
+        };
+      } catch (error) {
+        return null;
+      }
+    };
+
+    const collectTrustedSocialLinks = (links) => {
+      const trusted = [];
+      const seen = new Set();
+      (Array.isArray(links) ? links : []).forEach((link) => {
+        const safeLink = getTrustedXLink(link);
+        if (!safeLink || seen.has(safeLink.url)) return;
+        seen.add(safeLink.url);
+        trusted.push(safeLink);
+      });
+      return trusted;
+    };
+
+    const getTrustedIconUrl = (rawUrl) => {
+      if (!rawUrl) return "";
+      try {
+        const url = new URL(rawUrl);
+        const host = url.hostname.toLowerCase();
+        if (url.protocol !== "https:" || host !== "cdn.dexscreener.com") {
+          return "";
+        }
+        return url.toString();
+      } catch (error) {
+        return "";
+      }
+    };
+
     const SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
     const WALLET_STORAGE_KEY = "trinder_wallet_address";
     const walletStatusEl = document.getElementById("wallet-status");
     const walletNoteEl = document.getElementById("wallet-note");
     const connectWalletBtn = document.getElementById("connectWalletBtn");
-    const demoOverlay = document.getElementById("demoOverlay");
-    const overlayConnectBtn = document.getElementById("overlayConnectBtn");
     const walletState = {
       connected: false,
       address: null,
@@ -830,11 +839,6 @@
       })} SOL`;
     };
 
-    const updateDemoOverlay = () => {
-      if (!demoOverlay) return;
-      demoOverlay.classList.toggle("is-hidden", walletState.connected);
-    };
-
     const updateWalletNote = () => {
       if (!walletNoteEl) return;
       walletNoteEl.textContent = walletState.hasDemoCredit
@@ -854,7 +858,7 @@
         const label = formatBalance(readableBalance);
         walletStatusEl.textContent = `Connected ${shortAddress(walletState.address)} · ${label}`;
       } else {
-        walletStatusEl.textContent = "Wallet not connected";
+        walletStatusEl.textContent = "Browse freely. Connect a wallet only if you want to simulate trades.";
       }
       if (connectWalletBtn) {
         connectWalletBtn.textContent = walletState.connected
@@ -921,7 +925,6 @@
       walletState.address = publicKey;
       walletState.provider = provider;
       localStorage.setItem(WALLET_STORAGE_KEY, publicKey);
-      updateDemoOverlay();
       await refreshWalletBalance(publicKey);
     };
 
@@ -943,7 +946,6 @@
       balance = 0;
       updateWalletDisplay();
       updateWalletNote();
-      updateDemoOverlay();
     };
 
     const initStoredWallet = async () => {
@@ -962,13 +964,11 @@
       if (!isProviderConnected) {
         localStorage.removeItem(WALLET_STORAGE_KEY);
         updateWalletDisplay();
-        updateDemoOverlay();
         return;
       }
       walletState.address = stored;
       walletState.connected = true;
       walletState.provider = provider;
-      updateDemoOverlay();
       await refreshWalletBalance(stored);
     };
 
@@ -985,10 +985,20 @@
       const symbol = token.symbol || token.tokenAddress || "";
       const chain = token.chainId || token.chain || "";
 
-      const links = Array.isArray(token.links) ? token.links : [];
-      if (token.url) links.unshift({ label: "Dexscreener", url: token.url });
+      const links = collectTrustedSocialLinks(token.links);
       const description = token.description || "No description yet.";
       const stats = token._enrich || {};
+      const iconUrl = getTrustedIconUrl(token.icon);
+      const safeTokenName = escapeHtml(tokenName);
+      const safeSymbol = escapeHtml(symbol);
+      const safeChain = escapeHtml(chain || "unknown");
+      const safeDescription = escapeHtml(description);
+      const safeLinksHtml = links
+        .map((link) => `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`)
+        .join("");
+      const safeAvatarHtml = iconUrl
+        ? `<img src="${escapeHtml(iconUrl)}" alt="${safeTokenName}" />`
+        : escapeHtml(initials(tokenName));
 
       card.innerHTML = `
         <div class="tag like">Like</div>
@@ -997,27 +1007,20 @@
         <div class="row">
           <div class="token">
             <div class="avatar">
-              ${token.icon ? `<img src="${token.icon}" alt="${tokenName}" />` : initials(tokenName)}
+              ${safeAvatarHtml}
             </div>
             <div>
-              <div class="name">${tokenName}</div>
-              <div class="symbol">${symbol}</div>
+              <div class="name">${safeTokenName}</div>
+              <div class="symbol">${safeSymbol}</div>
             </div>
           </div>
-          <div class="chain">${chain || "unknown"}</div>
+          <div class="chain">${safeChain}</div>
         </div>
         <div class="links">
-          ${links
-            .map(
-              (link) =>
-                `<a href="${link.url}" target="_blank" rel="noopener noreferrer">${
-                  link.label || link.type || "Link"
-                }</a>`
-            )
-            .join("")}
+          ${safeLinksHtml}
         </div>
         <div class="meta">
-          ${description}
+          ${safeDescription}
         </div>
         <div class="stats">
           <div><span>Price</span><strong data-stat="price">${stats.price || "—"}</strong></div>
@@ -1643,12 +1646,6 @@
         }
       });
     }
-    if (overlayConnectBtn) {
-      overlayConnectBtn.addEventListener("click", () => {
-        connectWallet();
-      });
-    }
-    updateDemoOverlay();
     initStoredWallet();
     loadFeed();
   </script>
